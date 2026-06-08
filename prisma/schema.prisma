@@ -1,0 +1,151 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["identity"]
+}
+
+/// Roles del sistema: ciudadano, operador, admin
+model Rol {
+  id          String   @id @default(uuid()) @db.Uuid
+  nombre      String   @unique @db.VarChar(100)
+  descripcion String?   @db.Text
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  usuarios      Usuario[]
+  rolesPermisos RolPermiso[]
+
+  @@map("roles")
+  @@schema("identity")
+}
+
+/// Permisos granulares por módulo y acción
+model Permiso {
+  id          String  @id @default(uuid()) @db.Uuid
+  modulo      String  @db.VarChar(100)
+  accion      String  @db.VarChar(100)
+  descripcion String?  @db.Text
+  activo      Boolean @default(true)
+
+  rolesPermisos RolPermiso[]
+
+  @@unique([modulo, accion])
+  @@map("permisos")
+  @@schema("identity")
+}
+
+/// Relación M:N entre roles y permisos
+model RolPermiso {
+  rolId     String @map("rol_id") @db.Uuid
+  permisoId String @map("permiso_id") @db.Uuid
+
+  rol     Rol     @relation(fields: [rolId], references: [id], onDelete: Cascade)
+  permiso Permiso @relation(fields: [permisoId], references: [id], onDelete: Cascade)
+
+  @@id([rolId, permisoId])
+  @@map("roles_permisos")
+  @@schema("identity")
+}
+
+/// Usuarios del sistema - Datos personales y autenticación
+model Usuario {
+  id String @id @default(uuid()) @db.Uuid
+
+  // Autenticación
+  email           String  @unique @db.VarChar(255)
+  emailVerificado Boolean @default(false) @map("email_verificado")
+  hashPassword    String  @map("hash_password") @db.Char(60)
+
+  // 2FA - TOTP
+  totpSecret     String? @map("totp_secret") @db.VarChar(128)
+  totpHabilitado Boolean @default(false) @map("totp_habilitado")
+
+  // Datos personales
+  nombre   String  @db.VarChar(100)
+  telefono String? @db.VarChar(20)
+
+  // Autorización
+  rolId String @map("rol_id") @db.Uuid
+  rol   Rol    @relation(fields: [rolId], references: [id])
+
+  // Estado cuenta
+  activo           Boolean   @default(true)
+  intentosFallidos Int       @default(0) @map("intentos_fallidos")
+  bloqueadoHasta   DateTime? @map("bloqueado_hasta") @db.Timestamptz(6)
+  ultimoLogin      DateTime? @map("ultimo_login") @db.Timestamptz(6)
+
+  // Reset password / Email verification
+  tokenResetPwd   String?   @map("token_reset_pwd") @db.Char(64)
+  tokenResetExp   DateTime? @map("token_reset_exp") @db.Timestamptz(6)
+  tokenVerifEmail String?   @map("token_verif_email") @db.Char(64)
+
+  // Auditoría LOPDP
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6) // Soft delete
+
+  // Relaciones
+  sesiones Sesion[]
+  auditLog AuditLog[]
+
+  @@index([rolId])
+  @@index([email])
+  @@index([deletedAt])
+  @@map("usuarios")
+  @@schema("identity")
+}
+
+/// Sesiones activas - Refresh tokens
+model Sesion {
+  id String @id @default(uuid()) @db.Uuid
+
+  usuarioId String  @map("usuario_id") @db.Uuid
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  refreshToken String @unique @map("refresh_token") @db.Char(64)
+  userAgent    String @map("user_agent") @db.Text
+  ipAddress    String @map("ip_address") @db.Inet
+
+  activa     Boolean   @default(true)
+  expiraEn   DateTime  @map("expira_en") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  revocadaEn DateTime? @map("revocada_en") @db.Timestamptz(6)
+
+  @@index([usuarioId])
+  @@index([refreshToken])
+  @@index([expiraEn])
+  @@map("sesiones")
+  @@schema("identity")
+}
+
+/// Auditoría - Registro inmutable de acciones (LOPDP Art. 13)
+model AuditLog {
+  id BigInt @id @default(autoincrement())
+
+  usuarioId String?  @map("usuario_id") @db.Uuid
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  accion    String @db.VarChar(100) // LOGIN, LOGOUT, REGISTER, PASSWORD_RESET
+  ipAddress String @map("ip_address") @db.Inet
+  userAgent String @map("user_agent") @db.Text
+  metadata  Json? // Datos adicionales
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([usuarioId])
+  @@index([createdAt])
+  @@index([accion])
+  @@map("audit_log")
+  @@schema("identity")
+}

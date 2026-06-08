@@ -1,0 +1,49 @@
+import { Controller } from '@nestjs/common';
+import { MessagePattern, Payload } from '@nestjs/microservices';
+import { AuthService } from './auth.service';
+import { LoginUserDto, RegisterUserDto, VerifyEmailDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
+
+@Controller()
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @MessagePattern('register.user.auth')
+  registerUser(@Payload() registerUserDto: RegisterUserDto) {
+    return this.authService.registerUser(registerUserDto);
+  }
+
+  @MessagePattern('login.user.auth')
+  loginUser(@Payload() loginUserDto: LoginUserDto) {
+    return this.authService.loginUser(loginUserDto);
+  }
+
+  @MessagePattern('refresh.token.auth')
+  refreshToken(@Payload() tokenDto: { refreshToken: string; ipAddress?: string; userAgent?: string }) {
+    return this.authService.refreshUserToken(tokenDto);
+  }
+
+  @MessagePattern('logout.user.auth')
+  logoutUser(@Payload() tokenDto: { refreshToken: string }) {
+    return this.authService.logoutUser(tokenDto.refreshToken);
+  }
+
+  @MessagePattern('verify.email.auth')
+  verifyEmail(@Payload() verifyEmailDto: VerifyEmailDto) {
+    return this.authService.verifyEmail(verifyEmailDto);
+  }
+
+  @MessagePattern('forgot.password.auth')
+  forgotPassword(@Payload() forgotPasswordDto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(forgotPasswordDto);
+  }
+
+  @MessagePattern('reset.password.auth')
+  resetPassword(@Payload() resetPasswordDto: ResetPasswordDto) {
+    return this.authService.resetPassword(resetPasswordDto);
+  }
+
+  @MessagePattern('deactivate.user.auth')
+  deactivateUser(@Payload() data: { userId: string; requestedBy: string }) {
+    return this.authService.deactivateUser(data.userId, data.requestedBy);
+  }
+}
