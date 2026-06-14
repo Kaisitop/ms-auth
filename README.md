@@ -56,6 +56,8 @@ nombre: string, obligatorio
 telefono: string, opcional
 ```
 
+> **Nota arquitectónica (Zonas):** El registro en `ms-auth` se encarga exclusivamente de la identidad (LOPDP). Para completar el flujo en la app ciudadana, el frontend debe iniciar sesión tras el registro y luego llamar a `POST /api/zonas/usuarios/:usuarioId/principal` en el Gateway para establecer la zona base del usuario.
+
 ### Login
 
 ```http
