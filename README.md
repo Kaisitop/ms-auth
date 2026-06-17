@@ -183,7 +183,8 @@ Registro:
   "email": "operador2@centinela.com",
   "password": "Seguro123!",
   "nombre": "Operador Dos",
-  "telefono": "0999999999"
+  "telefono": "0999999999",
+  "zonaId": "{{zonaId}}"
 }
 ```
 

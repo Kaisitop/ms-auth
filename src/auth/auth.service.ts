@@ -68,6 +68,7 @@ export class AuthService {
     });
 
     return {
+      id: newUser.id,
       email: newUser.email,
       nombre: newUser.nombre,
       tokenVerifEmail: tokenVerifEmail, // Devuelto para pruebas sin envío de email
