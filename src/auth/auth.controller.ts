@@ -46,4 +46,9 @@ export class AuthController {
   deactivateUser(@Payload() data: { userId: string; requestedBy: string }) {
     return this.authService.deactivateUser(data.userId, data.requestedBy);
   }
+
+  @MessagePattern('usuarios.get_roles')
+  getUsersRoles(@Payload() userIds: string[]) {
+    return this.authService.getUsersRoles(userIds);
+  }
 }

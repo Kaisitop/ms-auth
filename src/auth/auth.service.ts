@@ -490,5 +490,17 @@ export class AuthService {
       message: 'Usuario dado de baja correctamente (soft delete)',
     };
   }
+
+  async getUsersRoles(userIds: string[]) {
+    const users = await this.prisma.usuario.findMany({
+      where: { id: { in: userIds } },
+      include: { rol: true }
+    });
+    
+    return users.map(u => ({
+      usuarioId: u.id,
+      rol: u.rol.nombre.toLowerCase() // 'ciudadano', 'operador', 'admin'
+    }));
+  }
 }
 
