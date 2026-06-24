@@ -13,5 +13,8 @@ npx prisma generate
 echo "Ejecutando migraciones de Prisma (db push)..."
 npx prisma db push --accept-data-loss
 
+echo "Ejecutando Seed de Prisma..."
+npx prisma db seed
+
 echo "Iniciando la aplicación..."
 exec "$@"
