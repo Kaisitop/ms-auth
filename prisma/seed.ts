@@ -35,6 +35,7 @@ async function main() {
   const roles = await prisma.rol.findMany();
   let adminRol = roles.find(r => r.nombre === 'Admin');
   let operadorRol = roles.find(r => r.nombre === 'Operador');
+  const ciudadanoRol = roles.find(r => r.nombre === 'Ciudadano');
   
   console.log('Roles creados/verificados correctamente');
 
@@ -88,7 +89,21 @@ async function main() {
       skipDuplicates: true,
     });
   }
-  
+
+  if (ciudadanoRol) {
+    // Ciudadano: crear y consultar sus reportes / SOS (app móvil)
+    const permisosCiudadano = permisos.filter(
+      (p) => p.modulo === 'eventos' && ['gestionar', 'leer'].includes(p.accion),
+    );
+    await prisma.rolPermiso.createMany({
+      data: permisosCiudadano.map((p) => ({
+        rolId: ciudadanoRol.id,
+        permisoId: p.id,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
   console.log('Permisos asignados a roles correctamente');
 
   // Crear usuarios de prueba
