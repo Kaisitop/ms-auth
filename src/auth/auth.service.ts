@@ -460,6 +460,13 @@ export class AuthService {
       });
     }
 
+    const isSelfDelete = userId === requestedBy;
+    const anonymizedEmail = `deleted_${userId}@centinela.invalid`;
+    const anonymizedPassword = await bcrypt.hash(
+      randomBytes(32).toString('hex'),
+      10,
+    );
+
     // Soft delete + desactivar + revocar todas las sesiones
     await this.prisma.$transaction([
       this.prisma.usuario.update({
@@ -467,6 +474,18 @@ export class AuthService {
         data: {
           activo: false,
           deletedAt: new Date(),
+          ...(isSelfDelete
+            ? {
+                email: anonymizedEmail,
+                nombre: 'Usuario eliminado',
+                telefono: null,
+                hashPassword: anonymizedPassword,
+                tokenVerifEmail: null,
+                tokenResetPwd: null,
+                intentosFallidos: 0,
+                bloqueadoHasta: null,
+              }
+            : {}),
         }
       }),
       this.prisma.sesion.updateMany({
@@ -480,14 +499,16 @@ export class AuthService {
 
     await this.auditService.createLog({
       usuarioId: userId,
-      accion: 'USER_DEACTIVATED',
+      accion: isSelfDelete ? 'USER_SELF_DELETED' : 'USER_DEACTIVATED',
       ipAddress: '127.0.0.1',
       userAgent: 'Unknown',
-      metadata: { requestedBy }
+      metadata: { requestedBy, isSelfDelete }
     });
 
     return {
-      message: 'Usuario dado de baja correctamente (soft delete)',
+      message: isSelfDelete
+        ? 'Cuenta y datos personales eliminados correctamente'
+        : 'Usuario dado de baja correctamente (soft delete)',
     };
   }
 
