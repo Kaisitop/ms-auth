@@ -56,6 +56,8 @@ const PERMISOS_CATALOG: PermisoDef[] = [
 
   // ── Patrulla (Policia) ──
   { modulo: 'analytics', accion: 'heat_map', descripcion: 'Mapa de calor de eventos IA' },
+  { modulo: 'patrullaje', accion: 'update_position', descripcion: 'Reportar posición GPS en patrulla' },
+  { modulo: 'patrullaje', accion: 'read_positions', descripcion: 'Ver posiciones activas de patrulleros' },
 
   // ── Ciudadano (app móvil) ──
   { modulo: 'reportes', accion: 'create', descripcion: 'Crear reportes ciudadanos' },
@@ -76,6 +78,7 @@ const OPERADOR_PERMISSIONS = [
   'rutas:read',
   'nodos:read',
   'notificaciones:send',
+  'patrullaje:read_positions',
 ];
 
 /** Permisos explícitos del admin (según MER) */
@@ -109,6 +112,7 @@ const POLICIA_PERMISSIONS = [
   'alertas:update_status',
   'reportes:read_anon',
   'analytics:heat_map',
+  'patrullaje:update_position',
 ];
 
 const CIUDADANO_PERMISSIONS = ['reportes:create', 'reportes:read_own'];
