@@ -51,4 +51,9 @@ export class AuthController {
   getUsersRoles(@Payload() userIds: string[]) {
     return this.authService.getUsersRoles(userIds);
   }
+
+  @MessagePattern('usuarios.get_web_push_recipients')
+  getWebPushRecipients() {
+    return this.authService.getWebPushRecipients();
+  }
 }
