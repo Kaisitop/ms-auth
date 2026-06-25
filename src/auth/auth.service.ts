@@ -502,5 +502,27 @@ export class AuthService {
       rol: u.rol.nombre.toLowerCase() // 'ciudadano', 'operador', 'admin'
     }));
   }
+
+  /** Usuarios del panel web que reciben push OneSignal (Admin, Operador, Policia). */
+  async getWebPushRecipients() {
+    const users = await this.prisma.usuario.findMany({
+      where: {
+        deletedAt: null,
+        emailVerificado: true,
+        rol: {
+          nombre: { in: ['Admin', 'Operador', 'Policia'] },
+        },
+      },
+      select: {
+        id: true,
+        rol: { select: { nombre: true } },
+      },
+    });
+
+    return users.map((u) => ({
+      usuarioId: u.id,
+      rol: u.rol.nombre.toLowerCase(),
+    }));
+  }
 }
 
