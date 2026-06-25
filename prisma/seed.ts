@@ -115,7 +115,7 @@ const POLICIA_PERMISSIONS = [
   'patrullaje:update_position',
 ];
 
-const CIUDADANO_PERMISSIONS = ['reportes:create', 'reportes:read_own'];
+const CIUDADANO_PERMISSIONS = ['reportes:create', 'reportes:read_own', 'alertas:read'];
 
 async function assignPermissions(rolId: string, keys: string[], permisos: { id: string; modulo: string; accion: string }[]) {
   const rows = permisos
