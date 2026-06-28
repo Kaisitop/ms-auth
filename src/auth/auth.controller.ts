@@ -1,7 +1,7 @@
 import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { AuthService } from './auth.service';
-import { LoginUserDto, RegisterUserDto, VerifyEmailDto, ForgotPasswordDto, ResetPasswordDto, ChangePasswordDto } from './dto';
+import { LoginUserDto, RegisterUserDto, VerifyEmailDto, ForgotPasswordDto, ResetPasswordDto, ChangePasswordDto, RefreshTokenDto, LogoutDto } from './dto';
 
 @Controller()
 export class AuthController {
@@ -18,13 +18,13 @@ export class AuthController {
   }
 
   @MessagePattern('refresh.token.auth')
-  refreshToken(@Payload() tokenDto: { refreshToken: string; ipAddress?: string; userAgent?: string }) {
+  refreshToken(@Payload() tokenDto: RefreshTokenDto) {
     return this.authService.refreshUserToken(tokenDto);
   }
 
   @MessagePattern('logout.user.auth')
-  logoutUser(@Payload() tokenDto: { refreshToken: string }) {
-    return this.authService.logoutUser(tokenDto.refreshToken);
+  logoutUser(@Payload() tokenDto: LogoutDto) {
+    return this.authService.logoutUser(tokenDto);
   }
 
   @MessagePattern('verify.email.auth')

@@ -8,12 +8,14 @@ import { JwtService } from '@nestjs/jwt';
 import { JwtPayload } from './interfaces/payload.interface';
 import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
+import { DispositivosService } from '../dispositivos/dispositivos.service';
 
 @Injectable()
 export class AuthService {
   constructor(private readonly prisma: PrismaService,
     private jwtService : JwtService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly dispositivosService: DispositivosService,
   ) {}
   
   async generateToken(jwtPayload: JwtPayload){
@@ -77,7 +79,7 @@ export class AuthService {
   }
 
   async loginUser(loginUserDto: LoginUserDto) {
-    const { email, password, ipAddress, userAgent } = loginUserDto;
+    const { email, password, ipAddress, userAgent, fcmToken, plataforma } = loginUserDto;
     const user = await this.prisma.usuario.findUnique({
       where: {
         email: email,
@@ -200,6 +202,14 @@ export class AuthService {
       userAgent: userAgent || 'Unknown',
     });
 
+    if (fcmToken) {
+      await this.dispositivosService.registerFcmToken(
+        user.id,
+        fcmToken,
+        plataforma || 'android',
+      );
+    }
+
     return {
       accessToken: token,
       refreshToken,
@@ -213,8 +223,14 @@ export class AuthService {
     };
   }
 
-  async refreshUserToken(tokenDto: { refreshToken: string; ipAddress?: string; userAgent?: string }) {
-    const { refreshToken, ipAddress, userAgent } = tokenDto;
+  async refreshUserToken(tokenDto: {
+    refreshToken: string;
+    ipAddress?: string;
+    userAgent?: string;
+    fcmToken?: string;
+    plataforma?: string;
+  }) {
+    const { refreshToken, ipAddress, userAgent, fcmToken, plataforma } = tokenDto;
 
     // Buscar la sesión y el usuario correspondiente
     const session = await this.prisma.sesion.findUnique({
@@ -273,6 +289,14 @@ export class AuthService {
     };
 
     const accessToken = await this.generateToken(payload);
+
+    if (fcmToken) {
+      await this.dispositivosService.registerFcmToken(
+        session.usuarioId,
+        fcmToken,
+        plataforma || 'android',
+      );
+    }
 
     return {
       accessToken,
@@ -471,7 +495,8 @@ export class AuthService {
     };
   }
 
-  async logoutUser(refreshToken: string) {
+  async logoutUser(dto: { refreshToken: string; fcmToken?: string }) {
+    const { refreshToken, fcmToken } = dto;
     const session = await this.prisma.sesion.findUnique({
       where: { refreshToken }
     });
@@ -497,6 +522,10 @@ export class AuthService {
       ipAddress: session.ipAddress, // Guardado en la sesión
       userAgent: session.userAgent,
     });
+
+    if (fcmToken) {
+      await this.dispositivosService.deactivateFcmToken(fcmToken);
+    }
 
     return {
       message: 'Sesión cerrada correctamente',
