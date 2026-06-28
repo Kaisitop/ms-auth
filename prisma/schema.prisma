@@ -96,8 +96,9 @@ model Usuario {
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6) // Soft delete
 
   // Relaciones
-  sesiones Sesion[]
-  auditLog AuditLog[]
+  sesiones    Sesion[]
+  auditLog    AuditLog[]
+  dispositivos Dispositivo[]
 
   @@index([rolId])
   @@index([email])
@@ -147,5 +148,22 @@ model AuditLog {
   @@index([createdAt])
   @@index([accion])
   @@map("audit_log")
+  @@schema("identity")
+}
+
+/// Tokens FCM por dispositivo (varios por usuario)
+model Dispositivo {
+  id         String   @id @default(uuid()) @db.Uuid
+  usuarioId  String   @map("usuario_id") @db.Uuid
+  usuario    Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  fcmToken   String   @unique @map("fcm_token") @db.VarChar(512)
+  plataforma String   @default("android") @db.VarChar(20)
+  activo     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([usuarioId])
+  @@index([activo])
+  @@map("dispositivos")
   @@schema("identity")
 }
