@@ -205,6 +205,7 @@ export class AuthService {
       refreshToken,
       user: {
         id: user.id,
+        nombre: user.nombre,
         email: user.email,
         rol: user.rol.nombre
       },
@@ -278,6 +279,7 @@ export class AuthService {
       refreshToken: newRefreshToken,
       user: {
         id: session.usuario.id,
+        nombre: session.usuario.nombre,
         email: session.usuario.email,
         rol: session.usuario.rol.nombre
       }
@@ -399,6 +401,67 @@ export class AuthService {
     await this.auditService.createLog({
       usuarioId: user.id,
       accion: 'PASSWORD_RESET_SUCCESS',
+      ipAddress: '127.0.0.1',
+      userAgent: 'Unknown',
+    });
+
+    return {
+      message: 'Contraseña actualizada correctamente',
+    };
+  }
+
+  async changePassword(data: {
+    userId: string;
+    currentPassword: string;
+    newPassword: string;
+  }) {
+    const { userId, currentPassword, newPassword } = data;
+
+    const user = await this.prisma.usuario.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || !user.activo) {
+      throw new RpcException({
+        statusCode: 404,
+        message: 'Usuario no encontrado',
+      });
+    }
+
+    const isCurrentValid = await bcrypt.compare(
+      currentPassword,
+      user.hashPassword,
+    );
+
+    if (!isCurrentValid) {
+      throw new RpcException({
+        statusCode: 401,
+        message: 'La contraseña actual es incorrecta',
+      });
+    }
+
+    const isSamePassword = await bcrypt.compare(newPassword, user.hashPassword);
+    if (isSamePassword) {
+      throw new RpcException({
+        statusCode: 400,
+        message: 'La nueva contraseña debe ser distinta a la actual',
+      });
+    }
+
+    const hashPassword = await bcrypt.hash(newPassword, 10);
+
+    await this.prisma.usuario.update({
+      where: { id: user.id },
+      data: {
+        hashPassword,
+        intentosFallidos: 0,
+        bloqueadoHasta: null,
+      },
+    });
+
+    await this.auditService.createLog({
+      usuarioId: user.id,
+      accion: 'PASSWORD_CHANGED',
       ipAddress: '127.0.0.1',
       userAgent: 'Unknown',
     });
