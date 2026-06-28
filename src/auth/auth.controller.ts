@@ -1,7 +1,7 @@
 import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { AuthService } from './auth.service';
-import { LoginUserDto, RegisterUserDto, VerifyEmailDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
+import { LoginUserDto, RegisterUserDto, VerifyEmailDto, ForgotPasswordDto, ResetPasswordDto, ChangePasswordDto } from './dto';
 
 @Controller()
 export class AuthController {
@@ -40,6 +40,13 @@ export class AuthController {
   @MessagePattern('reset.password.auth')
   resetPassword(@Payload() resetPasswordDto: ResetPasswordDto) {
     return this.authService.resetPassword(resetPasswordDto);
+  }
+
+  @MessagePattern('change.password.auth')
+  changePassword(
+    @Payload() data: ChangePasswordDto & { userId: string },
+  ) {
+    return this.authService.changePassword(data);
   }
 
   @MessagePattern('deactivate.user.auth')
