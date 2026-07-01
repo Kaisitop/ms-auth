@@ -1,22 +1,42 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { LoginUserDto, RegisterUserDto, VerifyEmailDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
+import { LoginUserDto, RegisterUserDto, VerifyEmailDto, ForgotPasswordDto, ResetPasswordDto, ResendVerificationDto, CreateUserByAdminDto, BulkImportUsersDto } from './dto';
+import { parseUsersImportFile } from './utils/user-import.parser';
 import * as bcrypt from 'bcrypt';
 
-import { RpcException } from '@nestjs/microservices';
+import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { JwtService } from '@nestjs/jwt';
 import { JwtPayload } from './interfaces/payload.interface';
 import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { DispositivosService } from '../dispositivos/dispositivos.service';
 
+// Tiempos de vida de los tokens de un solo uso
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
+const RESET_TOKEN_TTL_MIN = RESET_TOKEN_TTL_MS / 60000;
+const VERIF_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(private readonly prisma: PrismaService,
     private jwtService : JwtService,
     private readonly auditService: AuditService,
     private readonly dispositivosService: DispositivosService,
+    @Inject('NATS_SERVICE') private readonly natsClient: ClientProxy,
   ) {}
+
+  /** Emite un evento de envío de correo sin bloquear el flujo principal. */
+  private emitEmailEvent(pattern: string, payload: Record<string, unknown>) {
+    try {
+      this.natsClient.emit(pattern, payload);
+    } catch (error) {
+      this.logger.error(
+        `No se pudo emitir el evento ${pattern}: ${(error as Error).message}`,
+      );
+    }
+  }
   
   async generateToken(jwtPayload: JwtPayload){
     return await this.jwtService.signAsync(jwtPayload)
@@ -24,6 +44,7 @@ export class AuthService {
 
   async registerUser(registerUserDto: RegisterUserDto) {
     const { email, password, nombre, telefono } = registerUserDto;
+    const rolNombre = 'Ciudadano';
 
     const existingUser = await this.prisma.usuario.findUnique({
       where: {
@@ -39,17 +60,18 @@ export class AuthService {
     }
 
     const role = await this.prisma.rol.findUnique({
-      where: { nombre: 'Ciudadano' },
+      where: { nombre: rolNombre },
     });
 
     if (!role) {
       throw new RpcException({
         statusCode: 500,
-        message: 'Rol Ciudadano no encontrado',
+        message: `Rol ${rolNombre} no encontrado`,
       });
     }
 
     const tokenVerifEmail = randomBytes(32).toString('hex');
+    const tokenVerifExp = new Date(Date.now() + VERIF_TOKEN_TTL_MS);
     const hashPassword = await bcrypt.hash(password, 10)
     const newUser = await this.prisma.usuario.create({
       data: {
@@ -59,6 +81,7 @@ export class AuthService {
         telefono: telefono,
         rolId: role.id,
         tokenVerifEmail: tokenVerifEmail,
+        tokenVerifExp: tokenVerifExp,
       },
     });
 
@@ -69,13 +92,235 @@ export class AuthService {
       userAgent: 'Unknown',
     });
 
+    this.emitEmailEvent('email.send_verification', {
+      email: newUser.email,
+      nombre: newUser.nombre,
+      token: tokenVerifEmail,
+    });
+
     return {
       id: newUser.id,
       email: newUser.email,
       nombre: newUser.nombre,
-      tokenVerifEmail: tokenVerifEmail, // Devuelto para pruebas sin envío de email
       message: 'Usuario registrado correctamente. Por favor verifica tu email.',
     };
+  }
+
+  /** Alta de personal del panel (Operador / Policia) — solo vía admin autorizado. */
+  async createUserByAdmin(
+    dto: CreateUserByAdminDto & { requestedBy: string },
+  ) {
+    return this.provisionPanelUser({
+      email: dto.email,
+      nombre: dto.nombre,
+      telefono: dto.telefono,
+      rolNombre: dto.rolNombre,
+      requestedBy: dto.requestedBy,
+    });
+  }
+
+  async bulkCreateUsersByAdmin(
+    dto: BulkImportUsersDto & { requestedBy: string },
+  ) {
+    const parsed = parseUsersImportFile({
+      format: dto.format,
+      content: dto.content,
+      contentBase64: dto.contentBase64,
+    });
+    const fileDefaultRol = dto.rolNombreDefault;
+
+    if (parsed.errors.length > 0 && parsed.users.length === 0) {
+      throw new RpcException({
+        statusCode: 400,
+        message: 'El archivo no pudo procesarse',
+        errors: parsed.errors,
+      });
+    }
+
+    const results: Array<{
+      row: number;
+      email: string;
+      nombre: string;
+      status: 'created' | 'skipped' | 'error';
+      message?: string;
+    }> = [];
+
+    for (const parseError of parsed.errors) {
+      results.push({
+        row: parseError.row,
+        email: '—',
+        nombre: '—',
+        status: 'error',
+        message: parseError.message,
+      });
+    }
+
+    let created = 0;
+    let failed = parsed.errors.length;
+    let skipped = 0;
+
+    for (const row of parsed.users) {
+      const rolNombre = row.rolNombre ?? fileDefaultRol;
+
+      try {
+        await this.provisionPanelUser({
+          email: row.email,
+          nombre: row.nombre,
+          telefono: row.telefono,
+          rolNombre,
+          requestedBy: dto.requestedBy,
+        });
+        created++;
+        results.push({
+          row: row.row,
+          email: row.email,
+          nombre: row.nombre,
+          status: 'created',
+        });
+      } catch (error) {
+        const payload =
+          error instanceof RpcException
+            ? (error.getError() as { statusCode?: number; message?: string })
+            : { message: (error as Error).message };
+        const message = payload.message ?? 'No se pudo crear el usuario';
+
+        if (payload.statusCode === 409) {
+          skipped++;
+          results.push({
+            row: row.row,
+            email: row.email,
+            nombre: row.nombre,
+            status: 'skipped',
+            message: 'El correo ya está registrado',
+          });
+        } else {
+          failed++;
+          results.push({
+            row: row.row,
+            email: row.email,
+            nombre: row.nombre,
+            status: 'error',
+            message: String(message),
+          });
+        }
+      }
+    }
+
+    return {
+      total: parsed.users.length,
+      created,
+      skipped,
+      failed,
+      defaultRol: fileDefaultRol,
+      results: results.sort((a, b) => a.row - b.row),
+      message:
+        created > 0
+          ? `Importación completada: ${created} creado(s), ${skipped} omitido(s), ${failed} error(es).`
+          : 'No se creó ningún usuario.',
+    };
+  }
+
+  private async provisionPanelUser(params: {
+    email: string;
+    nombre: string;
+    telefono?: string;
+    rolNombre: 'Operador' | 'Policia';
+    requestedBy: string;
+  }) {
+    const { email, nombre, telefono, rolNombre, requestedBy } = params;
+
+    const existingUser = await this.prisma.usuario.findUnique({ where: { email } });
+    if (existingUser) {
+      throw new RpcException({
+        statusCode: 409,
+        message: 'El correo ya está registrado',
+      });
+    }
+
+    const role = await this.prisma.rol.findUnique({ where: { nombre: rolNombre } });
+    if (!role) {
+      throw new RpcException({
+        statusCode: 500,
+        message: `Rol ${rolNombre} no encontrado`,
+      });
+    }
+
+    const randomPassword = randomBytes(32).toString('hex');
+    const hashPassword = await bcrypt.hash(randomPassword, 10);
+    const tokenResetPwd = randomBytes(32).toString('hex');
+    const tokenResetExp = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+    const newUser = await this.prisma.usuario.create({
+      data: {
+        email,
+        hashPassword,
+        nombre,
+        telefono,
+        rolId: role.id,
+        emailVerificado: true,
+        tokenResetPwd,
+        tokenResetExp,
+      },
+    });
+
+    await this.auditService.createLog({
+      usuarioId: newUser.id,
+      accion: 'USER_CREATED_BY_ADMIN',
+      ipAddress: '127.0.0.1',
+      userAgent: 'Unknown',
+      metadata: { requestedBy, rolNombre },
+    });
+
+    this.emitEmailEvent('email.send_password_reset', {
+      email: newUser.email,
+      nombre: newUser.nombre,
+      token: tokenResetPwd,
+      expiresInMinutes: RESET_TOKEN_TTL_MIN,
+    });
+
+    return {
+      id: newUser.id,
+      email: newUser.email,
+      nombre: newUser.nombre,
+      rol: rolNombre,
+      message: `Usuario ${rolNombre} creado. Se envió un correo para establecer la contraseña.`,
+    };
+  }
+
+  async findUsers(filters?: { rol?: string }) {
+    const rolFilter = filters?.rol?.trim();
+    const allowedRoles = ['Operador', 'Policia', 'Admin'];
+
+    const users = await this.prisma.usuario.findMany({
+      where: {
+        deletedAt: null,
+        ...(rolFilter && allowedRoles.includes(rolFilter)
+          ? { rol: { nombre: rolFilter } }
+          : { rol: { nombre: { in: ['Operador', 'Policia', 'Admin'] } } }),
+      },
+      select: {
+        id: true,
+        email: true,
+        nombre: true,
+        telefono: true,
+        activo: true,
+        emailVerificado: true,
+        createdAt: true,
+        rol: { select: { nombre: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      nombre: u.nombre,
+      telefono: u.telefono,
+      activo: u.activo,
+      emailVerificado: u.emailVerificado,
+      rol: u.rol.nombre,
+      createdAt: u.createdAt.toISOString(),
+    }));
   }
 
   async loginUser(loginUserDto: LoginUserDto) {
@@ -324,11 +569,20 @@ export class AuthService {
       });
     }
 
+    // El token de verificación puede haber expirado (los emitidos sin expiración antigua se tratan como válidos)
+    if (user.tokenVerifExp && user.tokenVerifExp < new Date()) {
+      throw new RpcException({
+        statusCode: 400,
+        message: 'El enlace de verificación ha expirado. Solicita uno nuevo.',
+      });
+    }
+
     await this.prisma.usuario.update({
       where: { id: user.id },
       data: {
         emailVerificado: true,
         tokenVerifEmail: null,
+        tokenVerifExp: null,
       }
     });
 
@@ -344,6 +598,43 @@ export class AuthService {
     };
   }
 
+  async resendVerification(resendVerificationDto: ResendVerificationDto) {
+    const { email } = resendVerificationDto;
+    const neutralResponse = {
+      message: 'Si el correo existe y aún no está verificado, te enviamos un nuevo enlace.',
+    };
+
+    const user = await this.prisma.usuario.findUnique({ where: { email } });
+
+    // Respuesta neutra: no revelamos si el correo existe o ya está verificado
+    if (!user || user.deletedAt || user.emailVerificado) {
+      return neutralResponse;
+    }
+
+    const tokenVerifEmail = randomBytes(32).toString('hex');
+    const tokenVerifExp = new Date(Date.now() + VERIF_TOKEN_TTL_MS);
+
+    await this.prisma.usuario.update({
+      where: { id: user.id },
+      data: { tokenVerifEmail, tokenVerifExp },
+    });
+
+    await this.auditService.createLog({
+      usuarioId: user.id,
+      accion: 'EMAIL_VERIFICATION_RESENT',
+      ipAddress: '127.0.0.1',
+      userAgent: 'Unknown',
+    });
+
+    this.emitEmailEvent('email.send_verification', {
+      email: user.email,
+      nombre: user.nombre,
+      token: tokenVerifEmail,
+    });
+
+    return neutralResponse;
+  }
+
   async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
     const { email } = forgotPasswordDto;
 
@@ -357,7 +648,7 @@ export class AuthService {
     }
 
     const tokenResetPwd = randomBytes(32).toString('hex');
-    const tokenResetExp = new Date(Date.now() + 1000 * 60 * 60); // 1 hora
+    const tokenResetExp = new Date(Date.now() + RESET_TOKEN_TTL_MS);
 
     await this.prisma.usuario.update({
       where: { id: user.id },
@@ -374,8 +665,14 @@ export class AuthService {
       userAgent: 'Unknown',
     });
 
+    this.emitEmailEvent('email.send_password_reset', {
+      email: user.email,
+      nombre: user.nombre,
+      token: tokenResetPwd,
+      expiresInMinutes: RESET_TOKEN_TTL_MIN,
+    });
+
     return {
-      tokenResetPwd, // Devuelto para pruebas
       message: 'Si el correo existe, se ha enviado un token de recuperación.',
     };
   }

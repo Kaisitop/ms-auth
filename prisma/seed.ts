@@ -79,6 +79,7 @@ const OPERADOR_PERMISSIONS = [
   'nodos:read',
   'notificaciones:send',
   'patrullaje:read_positions',
+  'analytics:heat_map',
 ];
 
 /** Permisos explícitos del admin (según MER) */

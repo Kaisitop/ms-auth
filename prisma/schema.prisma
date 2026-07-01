@@ -89,6 +89,7 @@ model Usuario {
   tokenResetPwd   String?   @map("token_reset_pwd") @db.Char(64)
   tokenResetExp   DateTime? @map("token_reset_exp") @db.Timestamptz(6)
   tokenVerifEmail String?   @map("token_verif_email") @db.Char(64)
+  tokenVerifExp   DateTime? @map("token_verif_exp") @db.Timestamptz(6)
 
   // Auditoría LOPDP
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)

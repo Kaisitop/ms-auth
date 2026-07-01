@@ -1,7 +1,7 @@
 import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { AuthService } from './auth.service';
-import { LoginUserDto, RegisterUserDto, VerifyEmailDto, ForgotPasswordDto, ResetPasswordDto, ChangePasswordDto, RefreshTokenDto, LogoutDto } from './dto';
+import { LoginUserDto, RegisterUserDto, VerifyEmailDto, ForgotPasswordDto, ResetPasswordDto, ChangePasswordDto, RefreshTokenDto, LogoutDto, ResendVerificationDto, CreateUserByAdminDto, BulkImportUsersDto } from './dto';
 
 @Controller()
 export class AuthController {
@@ -10,6 +10,25 @@ export class AuthController {
   @MessagePattern('register.user.auth')
   registerUser(@Payload() registerUserDto: RegisterUserDto) {
     return this.authService.registerUser(registerUserDto);
+  }
+
+  @MessagePattern('create.user.by.admin.auth')
+  createUserByAdmin(
+    @Payload() data: CreateUserByAdminDto & { requestedBy: string },
+  ) {
+    return this.authService.createUserByAdmin(data);
+  }
+
+  @MessagePattern('bulk.import.users.by.admin.auth')
+  bulkCreateUsersByAdmin(
+    @Payload() data: BulkImportUsersDto & { requestedBy: string },
+  ) {
+    return this.authService.bulkCreateUsersByAdmin(data);
+  }
+
+  @MessagePattern('usuarios.find')
+  findUsers(@Payload() filters?: { rol?: string }) {
+    return this.authService.findUsers(filters);
   }
 
   @MessagePattern('login.user.auth')
@@ -30,6 +49,11 @@ export class AuthController {
   @MessagePattern('verify.email.auth')
   verifyEmail(@Payload() verifyEmailDto: VerifyEmailDto) {
     return this.authService.verifyEmail(verifyEmailDto);
+  }
+
+  @MessagePattern('resend.verification.auth')
+  resendVerification(@Payload() resendVerificationDto: ResendVerificationDto) {
+    return this.authService.resendVerification(resendVerificationDto);
   }
 
   @MessagePattern('forgot.password.auth')
