@@ -223,3 +223,18 @@ POST /api/auth/reset-password
 ```
 
 La desactivacion de usuarios requiere JWT y permiso.
+
+## Permisos relacionados con fotos y reportes
+
+Los permisos se asignan por rol en el seed (`prisma/seed.ts`). Los más relevantes para el flujo de imágenes:
+
+| Permiso | Rol típico | Uso |
+|---|---|---|
+| `reportes:create` | ciudadano | Subir fotos (`tipo=reporte`) y crear reportes |
+| `reportes:read_all` | admin, operador | Ver listado y detalle con `fotosUrls` |
+| `reportes:read_own` | ciudadano | Ver solo sus reportes |
+| `reportes:update` | operador | Tomar / resolver reportes |
+| `alertas:read` / `alertas:read_all` | admin, operador | Ver alertas y evidencia en el panel |
+| `alertas:update_status` | operador, patrullero | Subir evidencia (`tipo=evidencia`) y cerrar alertas |
+
+El gateway valida JWT + permisos antes de proxy a NATS o subida a Cloudinary.

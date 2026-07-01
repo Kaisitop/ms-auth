@@ -6,3 +6,6 @@ export * from './verify-email.dto';
 export * from './forgot-password.dto';
 export * from './reset-password.dto';
 export * from './change-password.dto';
+export * from './resend-verification.dto';
+export * from './create-user-by-admin.dto';
+export * from './bulk-import-users.dto';

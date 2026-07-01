@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ClientsModule, Transport } from '@nestjs/microservices';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -13,6 +14,15 @@ import { DispositivosModule } from '../dispositivos/dispositivos.module';
   imports: [
     PrismaModule,
     DispositivosModule,
+    ClientsModule.register([
+      {
+        name: 'NATS_SERVICE',
+        transport: Transport.NATS,
+        options: {
+          servers: [envs.natsService],
+        },
+      },
+    ]),
     JwtModule.register({
       global: true,
       secret: envs.jwtService,
