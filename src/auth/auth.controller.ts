@@ -87,4 +87,11 @@ export class AuthController {
   getWebPushRecipients() {
     return this.authService.getWebPushRecipients();
   }
+
+  @MessagePattern('auth.register_fcm_token')
+  registerFcmToken(
+    @Payload() data: { userId: string; fcmToken: string; plataforma?: string },
+  ) {
+    return this.authService.registerFcmTokenForUser(data);
+  }
 }

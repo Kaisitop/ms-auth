@@ -792,6 +792,20 @@ export class AuthService {
     };
   }
 
+  async registerFcmTokenForUser(data: {
+    userId: string;
+    fcmToken: string;
+    plataforma?: string;
+  }) {
+    await this.dispositivosService.registerFcmToken(
+      data.userId,
+      data.fcmToken,
+      data.plataforma || 'android',
+    );
+
+    return { message: 'FCM registrado' };
+  }
+
   async logoutUser(dto: { refreshToken: string; fcmToken?: string }) {
     const { refreshToken, fcmToken } = dto;
     const session = await this.prisma.sesion.findUnique({
