@@ -1,6 +1,10 @@
 # ms-auth - Guia tecnica y endpoints de autenticacion
 
-`ms-auth` maneja usuarios, login, JWT, refresh tokens, sesiones y recuperacion de contrasena. No expone HTTP directamente; recibe mensajes NATS desde `client-gateway`.
+> **Monorepo:** [README.md](../README.md) · [docs/contexto.md](../docs/contexto.md)
+
+`ms-auth` maneja usuarios, login, JWT, refresh tokens, sesiones y recuperacion de contrasena. No expone HTTP; recibe mensajes NATS desde `c-gateway`.
+
+**Capacidades recientes:** emails transaccionales vía eventos NATS (`email.send_*`), reset password con canal `web`|`app`, alta de usuarios por admin, purge de usuarios demo (`maintenance.purgeUsers`).
 
 ## Configuracion
 
@@ -24,6 +28,7 @@ Usuarios de prueba del seed:
 |---|---|---|
 | Admin | `admin@centinela.com` | `Admin123!` |
 | Operador | `operador@centinela.com` | `Operador123!` |
+| Policia | `policia@centinela.com` | `Policia123!` |
 
 ## Acceso HTTP por gateway
 
@@ -169,8 +174,11 @@ Authorization: Bearer {{accessToken}}
 | `refresh.token.auth` | `{ refreshToken, ipAddress?, userAgent? }` | Renueva token |
 | `logout.user.auth` | `{ refreshToken }` | Cierra sesion |
 | `verify.email.auth` | `{ token }` | Verifica email |
-| `forgot.password.auth` | `{ email }` | Genera solicitud de recuperacion |
+| `forgot.password.auth` | `{ email, channel?: 'web' \| 'app' }` | Genera solicitud de recuperacion |
 | `reset.password.auth` | `{ token, newPassword }` | Cambia contrasena |
+| `maintenance.purgeUsers` | `{ requestedBy }` | Purga usuarios no seed (admin) |
+| `email.send_verification` | *(evento emitido)* | → ms-notificaciones |
+| `email.send_password_reset` | *(evento emitido)* | → ms-notificaciones |
 | `deactivate.user.auth` | `{ userId, requestedBy }` | Desactiva usuario |
 | `audit.log.create` | `CreateAuditLogDto` | Registra auditoria |
 

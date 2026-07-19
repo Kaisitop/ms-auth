@@ -15,6 +15,7 @@ import { DispositivosService } from '../dispositivos/dispositivos.service';
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
 const RESET_TOKEN_TTL_MIN = RESET_TOKEN_TTL_MS / 60000;
 const VERIF_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
+const PANEL_ROLES = new Set(['Admin', 'Operador', 'Policia']);
 
 @Injectable()
 export class AuthService {
@@ -36,6 +37,29 @@ export class AuthService {
         `No se pudo emitir el evento ${pattern}: ${(error as Error).message}`,
       );
     }
+  }
+
+  private resolvePasswordResetChannel(
+    rolNombre: string | undefined,
+    requested?: 'web' | 'app',
+  ): 'web' | 'app' {
+    if (requested) return requested;
+    return PANEL_ROLES.has(rolNombre ?? '') ? 'web' : 'app';
+  }
+
+  private emitPasswordResetEmail(params: {
+    email: string;
+    nombre?: string | null;
+    token: string;
+    channel: 'web' | 'app';
+  }) {
+    this.emitEmailEvent('email.send_password_reset', {
+      email: params.email,
+      nombre: params.nombre,
+      token: params.token,
+      expiresInMinutes: RESET_TOKEN_TTL_MIN,
+      channel: params.channel,
+    });
   }
   
   async generateToken(jwtPayload: JwtPayload){
@@ -271,11 +295,11 @@ export class AuthService {
       metadata: { requestedBy, rolNombre },
     });
 
-    this.emitEmailEvent('email.send_password_reset', {
+    this.emitPasswordResetEmail({
       email: newUser.email,
       nombre: newUser.nombre,
       token: tokenResetPwd,
-      expiresInMinutes: RESET_TOKEN_TTL_MIN,
+      channel: 'web',
     });
 
     return {
@@ -636,10 +660,11 @@ export class AuthService {
   }
 
   async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
-    const { email } = forgotPasswordDto;
+    const { email, channel: requestedChannel } = forgotPasswordDto;
 
     const user = await this.prisma.usuario.findUnique({
-      where: { email }
+      where: { email },
+      include: { rol: { select: { nombre: true } } },
     });
 
     if (!user) {
@@ -649,6 +674,7 @@ export class AuthService {
 
     const tokenResetPwd = randomBytes(32).toString('hex');
     const tokenResetExp = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+    const channel = this.resolvePasswordResetChannel(user.rol?.nombre, requestedChannel);
 
     await this.prisma.usuario.update({
       where: { id: user.id },
@@ -663,13 +689,14 @@ export class AuthService {
       accion: 'PASSWORD_RESET_REQUESTED',
       ipAddress: '127.0.0.1',
       userAgent: 'Unknown',
+      metadata: { channel },
     });
 
-    this.emitEmailEvent('email.send_password_reset', {
+    this.emitPasswordResetEmail({
       email: user.email,
       nombre: user.nombre,
       token: tokenResetPwd,
-      expiresInMinutes: RESET_TOKEN_TTL_MIN,
+      channel,
     });
 
     return {
